@@ -131,6 +131,7 @@ class ArgumentValidatingCommand(SSHCommand):
         return self
 
     def start(self):
+        sys.stdout.write('commi\n')
         if not tuple(self.args) == tuple(self.required_arguments):
             [func(self) for func in self.failure_callbacks]
         else:
@@ -139,8 +140,10 @@ class ArgumentValidatingCommand(SSHCommand):
 
 
 class SSHShell(object):
+    """接受shell命令"""
 
     def __init__(self, protocol, prompt):
+        sys.stdout.write('comming sshshell\n')
         self.protocol = protocol
         self.protocol.prompt = prompt
         self.showPrompt()
@@ -209,9 +212,11 @@ class SSHShell(object):
         self.runCommand()
 
     def showPrompt(self):
+        """显示命令提示符"""
         self.protocol.terminal.write(self.protocol.prompt)
 
     def ctrl_c(self):
+        """ctrl c 快捷键"""
         self.protocol.lineBuffer = []
         self.protocol.lineBufferIndex = 0
         self.protocol.terminal.nextLine()
@@ -221,11 +226,18 @@ class SSHShell(object):
 class SSHProtocol(recvline.HistoricRecvLine):
 
     def __init__(self, user, prompt, commands):
-        self.user = user
+        """
+
+        :param user:    SSHAvatar对象
+        :param prompt:  命令提示符
+        :param commands: {'command_name': command_class}
+        """
+        sys.stdout.write('comming sshprotocol\n')
+        self.user = user    # SSHAvatar对象
         self.prompt = prompt
         self.commands = commands
         self.password_input = False
-        self.cmdstack = []
+        self.cmdstack = []  # SSHShell对象
 
     def connectionMade(self):
         recvline.HistoricRecvLine.connectionMade(self)
@@ -243,6 +255,11 @@ class SSHProtocol(recvline.HistoricRecvLine):
         })
 
     def lineReceived(self, line):
+        """
+        执行前端输入的命令
+        :param line: 前端输入的内容
+        :return:
+        """
         if len(self.cmdstack):
             self.cmdstack[-1].lineReceived(line)
 
@@ -303,6 +320,14 @@ class SSHAvatar(avatar.ConchUser):
     implements(conchinterfaces.ISession)
 
     def __init__(self, user, prompt, commands):
+        """
+
+        :param user:    用户 root
+        :param prompt:  命令提示符
+        :param commands: {'command_name': command_class}
+        """
+
+        sys.stdout.write('comming sshavatar\n')
         avatar.ConchUser.__init__(self)
 
         self.user = user
@@ -312,8 +337,9 @@ class SSHAvatar(avatar.ConchUser):
         self.channelLookup.update({'session': session.SSHSession})
 
     def openShell(self, protocol):
-        serverProtocol = insults.ServerProtocol(SSHProtocol, self, self.prompt,
-                                                self.commands)
+        serverProtocol = insults.ServerProtocol(
+            SSHProtocol, self, self.prompt, self.commands
+        )
 
         serverProtocol.makeConnection(protocol)
         protocol.makeConnection(session.wrapProtocol(serverProtocol))
@@ -335,18 +361,24 @@ class SSHRealm:
     implements(portal.IRealm)
 
     def __init__(self, prompt, commands):
+        """
+
+        :param prompt: 命令提示符
+        :param commands: {'command_name': command_class}
+        """
+        sys.stdout.write('comming sshrealm\n')
         self.prompt = prompt
         self.commands = commands
 
     def requestAvatar(self, avatarId, mind, *interfaces):
         if conchinterfaces.IConchUser in interfaces:
-            return interfaces[0], SSHAvatar(avatarId, self.prompt,
-                                            self.commands), lambda: None
+            return interfaces[0], SSHAvatar(avatarId, self.prompt, self.commands), lambda: None
         else:
             raise Exception("No supported interfaces found.")
 
 
 class SSHTransport(transport.SSHServerTransport):
+    """ssh链接"""
     hadVersion = False
 
     def connectionMade(self):
@@ -373,6 +405,7 @@ class SSHTransport(transport.SSHServerTransport):
 
     # this seems to be the only reliable place of catching lost connection
     def connectionLost(self, reason):
+        sys.stdout.write('connect lost\n')
         for i in self.interactors:
             i.sessionClosed()
         if self.transport.sessionno in self.factory.sessions:
@@ -406,6 +439,8 @@ class SSHFactory(factory.SSHFactory):
             t.supportedKeyExchanges = ske
 
         t.factory = self
+        import pprint
+        pprint.pprint(dir(t))
         return t
 
 
@@ -455,7 +490,7 @@ def getSSHFactory(commands, prompt, keypath, **users):
 
     :param commands:    命令集合list, [command_class_name, command_class_name]
     :param prompt:  命令提示符，You can rewrite the shell prompt via protocol.prompt.
-    :param keypath:
+    :param keypath: rsa key 文件的路径
     :param users:   用户信息{'name': 'passwd', 'user2': 'passwd2'}
     :return:
     """
@@ -469,7 +504,7 @@ def getSSHFactory(commands, prompt, keypath, **users):
     cmds = {}
     for command in commands:
         cmds[command.name] = command
-    commands = cmds  # {'name': class, 'name': class}
+    commands = cmds  # {'command_name': command_class, 'command_name': command_class}
 
     # 加入退出ssh连接命令
     for exit_cmd in ['_exit', 'exit']:
@@ -479,6 +514,7 @@ def getSSHFactory(commands, prompt, keypath, **users):
     # sshFactory = factory.SSHFactory()
     sshFactory = SSHFactory()
 
+    # 处理命令
     sshFactory.portal = portal.Portal(
         SSHRealm(prompt=prompt, commands=commands)
     )
@@ -490,6 +526,7 @@ def getSSHFactory(commands, prompt, keypath, **users):
     # 获取rsa key
     pubKeyString, privKeyString = getRSAKeys(keypath)
 
+    # rsa key to mock
     sshFactory.publicKeys = {
         'ssh-rsa': keys.Key.fromString(data=pubKeyString)
     }
@@ -510,7 +547,7 @@ def runServer(commands, prompt="$ ", keypath=".", interface='', port=2222, **use
     启动模拟器
     :param commands:    命令集合list
     :param prompt:  命令提示符，You can rewrite the shell prompt via protocol.prompt.
-    :param keypath:
+    :param keypath: rsa key 文件的路径
     :param interface:   模拟器绑定的ip,'127.0.0.1'
     :param port:    模拟器监听的端口，2222
     :param users:   用户信息{'name': 'passwd', 'user2': 'passwd2'}
@@ -519,6 +556,7 @@ def runServer(commands, prompt="$ ", keypath=".", interface='', port=2222, **use
     # 获取twisted factory
     sshFactory = getSSHFactory(commands, prompt, keypath, **users)
     # 运行twisted服务
+    sys.stdout.write('Listening {0}:{1}......\n'.format(interface, port))
     reactor.listenTCP(port, sshFactory, interface=interface)
     reactor.run()
 

@@ -55,7 +55,7 @@ def main():
     MockSSH.runServer(
         commands,
         prompt="[root@hostname:Active] testadmin # ",
-        interface='192.168.125.133',
+        interface='127.0.0.1',
         port=9999,
         **users)
 
